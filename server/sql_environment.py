@@ -71,7 +71,7 @@ class SQLQueryEnvironment:
             schema_info=schema_info,
             query_result="",
             execution_error="",
-            reward=0.0,
+            reward=0.001,
             done=False,
             partial_scores={},
             hint=hint,
@@ -165,7 +165,8 @@ class SQLQueryEnvironment:
         improvement_bonus = IMPROVEMENT_BONUS if delta > 0.05 else 0.0
         repetition_penalty = REPETITION_PENALTY if proposed == self._last_query else 0.0
         raw = delta + correctness_bonus + improvement_bonus + repetition_penalty + STEP_PENALTY
-        return round(max(-0.5, min(1.0, raw)), 4)
+        # Clamp strictly between 0 and 1 (not 0.0, not 1.0)
+        return round(max(-0.499, min(0.999, raw)), 4)
 
     def state(self) -> SQLState:
         return self._state
@@ -174,10 +175,10 @@ class SQLQueryEnvironment:
         obs = SQLObservation(
             task_description=self._task_def.description if self._task_def else "",
             schema_info=SCHEMA_INFO, query_result="", execution_error=error,
-            reward=0.0, done=False, partial_scores={}, hint=hint,
+            reward=0.001, done=False, partial_scores={}, hint=hint,
             step_number=self._state.step_count, max_steps=self._state.max_steps,
         )
-        return StepResult(observation=obs, reward=0.0, done=False)
+        return StepResult(observation=obs, reward=0.001, done=False)
 
     def _close_db(self):
         if self._conn:
