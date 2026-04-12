@@ -1,0 +1,90 @@
+name: queryopt-tutor
+version: "2.0.0"
+description: >
+  SQLens is a real-world OpenEnv environment for training AI agents on SQL.
+  6 tasks: SQL Tutor (SQLite execution, e-commerce schema) and SQL Optimizer
+  (security fixes, performance rewrites). Dense shaped rewards.
+
+author: "SQLens"
+license: MIT
+tags: [openenv, sql, optimization, security, rlhf, real-world]
+
+environment:
+  class: SQLQueryEnvironment
+  module: server.sql_environment
+
+action:
+  class: SQLAction
+  fields:
+    - {name: query, type: string, description: "SQL SELECT or WITH (CTE) statement"}
+    - {name: optimized_query, type: string, description: "Optimized SQL (optimizer tasks)"}
+
+observation:
+  class: SQLObservation
+  fields:
+    - {name: task_description, type: string}
+    - {name: schema_info, type: string}
+    - {name: query_result, type: string}
+    - {name: execution_error, type: string}
+    - {name: reward, type: float}
+    - {name: done, type: bool}
+    - {name: partial_scores, type: object}
+    - {name: hint, type: string}
+    - {name: step_number, type: int}
+    - {name: max_steps, type: int}
+    - {name: task_name, type: string}
+    - {name: current_query, type: string}
+    - {name: dialect, type: string}
+    - {name: feedback, type: string}
+
+state:
+  class: SQLState
+  fields:
+    - {name: episode_id, type: string}
+    - {name: step_count, type: int}
+    - {name: current_task, type: string}
+    - {name: task_difficulty, type: string}
+    - {name: max_steps, type: int}
+    - {name: attempts, type: int}
+    - {name: best_reward, type: float}
+    - {name: task_solved, type: bool}
+
+tasks:
+  - {id: easy_select,        title: "Indian Customer Directory",       difficulty: easy,   task_type: tutor,     dialect: sqlite,   max_steps: 5, success_threshold: 0.99, score_range: [0.0,1.0], tags: [SELECT,WHERE,"ORDER BY"]}
+  - {id: medium_join,        title: "Customer Revenue Report",         difficulty: medium, task_type: tutor,     dialect: sqlite,   max_steps: 5, success_threshold: 0.99, score_range: [0.0,1.0], tags: [JOIN,"GROUP BY",SUM]}
+  - {id: hard_subquery,      title: "Category Champion Report",        difficulty: hard,   task_type: tutor,     dialect: sqlite,   max_steps: 5, success_threshold: 0.99, score_range: [0.0,1.0], tags: [CTE,RANK,"Window Functions"]}
+  - {id: sql_injection_fix,  title: "SQL Injection Fix",               difficulty: easy,   task_type: optimizer, dialect: postgres,  max_steps: 5, success_threshold: 0.80, score_range: [0.0,1.0], tags: [Security,"SQL Injection","Parameterized Queries"]}
+  - {id: query_optimization, title: "Query Performance Optimization",  difficulty: medium, task_type: optimizer, dialect: mysql,    max_steps: 6, success_threshold: 0.75, score_range: [0.0,1.0], tags: [Performance,Index,"Query Optimization"]}
+  - {id: complex_rewrite,    title: "Complex Query Rewrite",           difficulty: hard,   task_type: optimizer, dialect: postgres,  max_steps: 8, success_threshold: 0.70, score_range: [0.0,1.0], tags: [JOIN,"Correlated Subquery",Performance,Pagination]}
+
+reward:
+  type: shaped
+  range: [-0.5, 1.0]
+  components:
+    - {name: correct_results,    weight: 0.6, description: "Row overlap vs expected (tutor)"}
+    - {name: schema_compliance,  weight: 0.2, description: "Required tables referenced"}
+    - {name: query_efficiency,   weight: 0.2, description: "No SELECT *, no obvious waste"}
+    - {name: objective_bonus,    value: 0.20, description: "Bonus when success_threshold crossed"}
+    - {name: improvement_bonus,  value: 0.10, description: "Bonus for delta > 0.05"}
+    - {name: repetition_penalty, value: -0.10, description: "Penalty for identical query"}
+    - {name: step_penalty,       value: -0.02, description: "Small penalty per step"}
+
+safety:
+  blocked: [DROP,INSERT,UPDATE,DELETE,ALTER,CREATE,TRUNCATE,PRAGMA]
+  max_query_length: 4000
+  isolation: per_episode_sqlite_inmemory
+
+server:
+  port: 7860
+  framework: fastapi
+  endpoints: ["POST /reset","POST /step","GET /state","GET /tasks","GET /health","GET /healthz"]
+
+baseline:
+  script: inference.py
+  model: "Qwen/Qwen2.5-72B-Instruct"
+  api_base: "https://router.huggingface.co/v1"
+  required_env: [HF_TOKEN, API_BASE_URL, MODEL_NAME]
+
+spaces:
+  sdk: docker
+  hardware: cpu-basic
