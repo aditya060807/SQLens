@@ -430,10 +430,14 @@ textarea{font-family:var(--mono);resize:none;line-height:1.65;font-size:12.5px}
 <!-- DASHBOARD PAGE -->
 <div class="pg" id="pg-dashboard">
   <div class="db-wrap">
-    <div class="db-hd">
-      <h1>Analytics Dashboard</h1>
-      <p>Real-time query analysis stats &#8212; updates after every analysis</p>
-      <button class="db-refresh-btn" onclick="loadDashboard(true)" id="db-refresh-btn"><span id="db-refresh-ic">&#128260;</span> Refresh</button>
+    <div class="db-hd" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:12px;text-align:left;margin-bottom:26px">
+      <div>
+        <h1 style="font-size:26px;font-weight:800;letter-spacing:-.6px;margin-bottom:5px">Analytics Dashboard</h1>
+        <p style="font-size:13.5px;color:var(--muted)">Real-time query analysis stats &#8212; updates after every analysis</p>
+      </div>
+      <button class="db-refresh-btn" onclick="loadDashboard(true)" id="db-refresh-btn" title="Refresh dashboard data" style="flex-shrink:0;margin-top:4px">
+        <span id="db-refresh-ic">&#128260;</span> Refresh Data
+      </button>
     </div>
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-card-hd"><span>Total Analyzed</span><span class="stat-card-ico">&#128202;</span></div><div class="stat-card-val" id="d-total">&#8212;</div></div>
@@ -813,6 +817,7 @@ async function sendFB(rating){
 }
 const TUTOR_SCHEMA='customers(customer_id, name, email, country, city, joined_date, tier)\nproducts(product_id, name, category, subcategory, price, cost, stock)\norders(order_id, customer_id, order_date, shipped_date, status, discount_pct)\norder_items(item_id, order_id, product_id, quantity, unit_price)\nreviews(review_id, customer_id, product_id, rating, review_date)';
 let _tasksLoaded=false;
+const _tasksMap={};
 async function loadTasks(){
   if(_tasksLoaded)return;
   const g=document.getElementById('tasks-grid');
@@ -820,16 +825,18 @@ async function loadTasks(){
     const r=await fetch(BASE+'/tasks');if(!r.ok)throw new Error('HTTP '+r.status);
     const d=await r.json();const tasks=d.tasks||d;
     if(!tasks||!tasks.length){g.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:48px;color:var(--dim)">No tasks available</div>';return;}
+    tasks.forEach(t=>{_tasksMap[t.task_id]=t;});
     g.innerHTML=tasks.map(t=>{
       const diff=(t.difficulty||'medium').toLowerCase(),dc=diff==='easy'?'de':diff==='hard'?'dh':'dm';
       const tags=(t.tags||[]).map(tag=>'<span class="tag">'+esc(tag)+'</span>').join('');
       const isTutor=t.task_type==='tutor';
-      return '<div class="task-card" onclick="loadTask(\''+encodeURIComponent(JSON.stringify(t))+'\')">'+
+      const typeLabel=isTutor?'&#127891; Tutor &mdash; runs live SQLite':'&#9889; Optimizer &mdash; fix the broken query';
+      return '<div class="task-card" onclick="loadTask('+JSON.stringify(t.task_id)+')">'+
         '<div class="diff-badge '+dc+'">'+diff+' &middot; '+esc(t.task_type||'task')+'</div>'+
         '<h3>'+esc(t.title||t.task_id)+'</h3>'+
         '<p>'+esc(t.description||'')+'</p>'+
         '<div class="task-tags">'+tags+(t.dialect?'<span class="tag">'+esc(t.dialect)+'</span>':'')+(t.max_steps?'<span class="tag">max '+t.max_steps+' steps</span>':'')+'</div>'+
-        '<div class="task-action">'+(isTutor?'&#127891; Tutor &#8212; runs live SQLite':'&#9889; Optimizer &#8212; fix the broken query')+' &#8594;</div>'+
+        '<div class="task-action">'+typeLabel+' &#8594;</div>'+
         '</div>';
     }).join('');
     _tasksLoaded=true;
@@ -837,14 +844,15 @@ async function loadTasks(){
     g.innerHTML='<div style="grid-column:1/-1;text-align:center;padding:48px;color:var(--red);font-size:13px">Failed to load tasks: '+esc(e.message)+'</div>';
   }
 }
-function loadTask(encoded){
-  let t;try{t=JSON.parse(decodeURIComponent(encoded));}catch(e){return;}
+function loadTask(taskId){
+  const t=_tasksMap[taskId];
+  if(!t){console.error('Task not found:',taskId);return;}
   const isTutor=t.task_type==='tutor';
   let query='',hint='';
   const dialect=(t.dialect||'sqlite').toLowerCase();
   if(!isTutor&&t.original_query){
     query=t.original_query;
-    hint='Optimizer Task: "'+t.title+'" -- This is the broken production query. Click Analyze Query to see all issues, then fix them to score 100.';
+    hint='Optimizer Task: "'+t.title+'" — This is the broken production query. Analyze it to see all issues, then fix them to score 100.';
   }else{
     const starters={
       easy_select:'-- Task: '+t.title+'\n-- '+t.description+'\n\nSELECT name, city, tier\nFROM customers\nWHERE -- add your filter here\nORDER BY name ASC;',
@@ -852,7 +860,7 @@ function loadTask(encoded){
       hard_subquery:'-- Task: '+t.title+'\n-- '+t.description+'\n\nWITH product_stats AS (\n  SELECT p.category, p.name AS product_name,\n         SUM(oi.quantity * oi.unit_price) AS revenue,\n         ROUND(AVG(r.rating), 2) AS avg_rating,\n         RANK() OVER (PARTITION BY p.category ORDER BY SUM(oi.quantity * oi.unit_price) DESC) AS rnk\n  FROM products p\n  JOIN order_items oi ON -- add join\n  LEFT JOIN reviews r ON -- add join\n  GROUP BY p.product_id, p.category, p.name\n)\nSELECT category, product_name AS top_product, revenue, avg_rating\nFROM product_stats\nWHERE rnk = 1\nORDER BY category;',
     };
     query=starters[t.task_id]||'-- Task: '+t.title+'\n-- '+t.description+'\n\nSELECT ';
-    hint='Tutor Task: "'+t.title+'" -- Write your SQL query below. Your query runs on a live SQLite database.';
+    hint='Tutor Task: "'+t.title+'" — Write your SQL query below. Your query runs on a live SQLite database and results appear instantly.';
     document.getElementById('ctx-input').value=TUTOR_SCHEMA;
   }
   document.getElementById('sql-input').value=query;
@@ -860,6 +868,7 @@ function loadTask(encoded){
   const hb=document.getElementById('hint-bar');hb.textContent=hint;hb.classList.add('show');
   resetResults();updateCharCount();show('analyze');
 }
+
 async function loadDashboard(force){
   const btn=document.getElementById('db-refresh-btn'),ic=document.getElementById('db-refresh-ic');
   if(btn)btn.disabled=true;if(ic)ic.textContent='...';
