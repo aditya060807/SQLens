@@ -145,7 +145,7 @@ textarea{font-family:var(--mono);resize:none;line-height:1.65;font-size:12.5px}
 .ring-wrap{display:flex;flex-direction:column;align-items:center;gap:7px;flex-shrink:0}
 .ring{width:108px;height:108px;position:relative;display:flex;align-items:center;justify-content:center;filter:drop-shadow(0 0 14px rgba(99,102,241,.18))}
 .ring svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}
-.ring-num{font-size:34px;font-weight:900;line-height:1;position:relative;z-index:1;letter-spacing:-1px;transition:color .5s}
+.ring-num{font-size:26px;font-weight:900;line-height:1;position:relative;z-index:1;letter-spacing:-1px;transition:color .5s}
 .ring-lbl{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--dim)}
 .ring-circle{transition:stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1),stroke .5s}
 .score-detail{flex:1;min-width:200px}
@@ -562,7 +562,7 @@ async function loadHomeStats(){
     const s=await fetch(BASE+'/api/sql/stats').then(r=>r.json()).catch(()=>({}));
     const t=document.getElementById('home-total');const a=document.getElementById('home-avg');
     if(t)t.textContent=s.totalAnalyzed??'0';
-    if(a)a.textContent=s.averageRewardScore??'--';
+    if(a)a.textContent=s.averageRewardScore!=null?Number(s.averageRewardScore).toFixed(2):'--';
   }catch(e){}
 }
 const EXAMPLES=[
@@ -717,8 +717,8 @@ function hlSQL(sql){
   s=s.replace(/(--[^\n]*)/g,'<span style="color:#3d5070;font-style:italic">$1</span>');
   return s;
 }
-function scoreColor(s){return s>=70?'var(--green)':s>=40?'var(--yellow)':'var(--red)';}
-function fillCls(s){return s>=70?'fg':s>=40?'fy':'fr';}
+function scoreColor(s){return s>=0.7?'var(--green)':s>=0.4?'var(--yellow)':'var(--red)';}
+function fillCls(s){return s>=0.7?'fg':s>=0.4?'fy':'fr';}
 async function runAnalysis(){
   const sql=document.getElementById('sql-input').value.trim();
   const dialect=document.getElementById('dialect').value;
@@ -744,7 +744,7 @@ function renderResult(d,origSql){
   const body=document.getElementById('res-body');body.style.display='flex';
   const score=+(d.rewardScore||0),perf=+(d.performanceScore||0),sec=+(d.securityScore||0),read=+(d.readabilityScore||0);
   const issues=d.issues||[],optQ=d.optimizedQuery||'',expl=d.explanation||'',impact=d.realWorldImpact||'';
-  const c=scoreColor(score),circ=2*Math.PI*46,finalDash=circ*(1-score/100);
+  const c=scoreColor(score),circ=2*Math.PI*46,finalDash=circ*(1-score);
   // Triple-clean the optimized query before any rendering
   let cleanedOptQ=cleanSQL(optQ)||'';
   // Extra nuclear pass: remove any remaining digit+quote+> artifacts
@@ -765,18 +765,18 @@ function renderResult(d,origSql){
   }else{
     issHtml='<div class="no-issues">&#10003; No issues detected &#8212; this query is production-ready!</div>';
   }
-  const hasOpt=score<100&&cleanedOptQ&&cleanedOptQ.trim().length>5;
+  const hasOpt=score<1.0&&cleanedOptQ&&cleanedOptQ.trim().length>5;
   const optHtml=hasOpt?
     '<div class="opt-box"><div class="opt-hd"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">&#10024;</span><span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#a5b4fc">AI Optimized Query</span></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button id="opt-copy-btn" onclick="copyOpt()" class="copy-btn">&#128203; Copy</button><button id="opt-ins-btn" onclick="insertOpt()" style="padding:6px 16px;background:var(--grd);border:none;border-radius:7px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;font-family:var(--sans);display:flex;align-items:center;gap:6px;transition:opacity .15s" onmouseover="this.style.opacity=\'.85\'" onmouseout="this.style.opacity=\'1\'">&#8679; Insert into Editor</button></div></div><pre class="opt-pre">'+hlSQL(cleanedOptQ)+'</pre></div>':
     (score===100?'<div class="no-issues" style="padding:16px 20px;border-radius:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">&#127942;</span><div><div style="font-weight:700;color:var(--green)">Score 100 &#8212; Perfect Query</div><div style="font-size:12px;color:var(--muted);margin-top:2px">No rewrite needed. Production-ready.</div></div></div>':'');
   body.innerHTML=
     '<div class="score-row">'+
       '<div class="ring-wrap"><div class="ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="none" stroke="var(--border)" stroke-width="7"/><circle id="ring-arc" cx="50" cy="50" r="46" fill="none" stroke="'+c+'" stroke-width="7" stroke-dasharray="'+circ.toFixed(2)+'" stroke-dashoffset="'+circ.toFixed(2)+'" stroke-linecap="round" class="ring-circle"/></svg><span class="ring-num" id="ring-num" style="color:'+c+'">0</span></div><div class="ring-lbl">Quality Score</div></div>'+
-      '<div class="score-detail"><h3>'+(score>=70?'&#10003; Good Query':score>=40?'&#9888;&#65039; Needs Work':'&#128680; Critical Issues')+'</h3>'+
+      '<div class="score-detail"><h3>'+(score>=0.7?'&#10003; Good Query':score>=0.4?'&#9888;&#65039; Needs Work':'&#128680; Critical Issues')+'</h3>'+
         '<div class="sub-scores">'+
-          '<div class="sub-sc"><div class="sub-hd"><span>Performance</span><span>'+perf+'</span></div><div class="sub-bar"><div class="sub-fill '+fillCls(perf)+'" id="sf-p" style="width:0%"></div></div></div>'+
-          '<div class="sub-sc"><div class="sub-hd"><span>Security</span><span>'+sec+'</span></div><div class="sub-bar"><div class="sub-fill '+fillCls(sec)+'" id="sf-s" style="width:0%"></div></div></div>'+
-          '<div class="sub-sc"><div class="sub-hd"><span>Readability</span><span>'+read+'</span></div><div class="sub-bar"><div class="sub-fill '+fillCls(read)+'" id="sf-r" style="width:0%"></div></div></div>'+
+          '<div class="sub-sc"><div class="sub-hd"><span>Performance</span><span>'+perf.toFixed(2)+'</span></div><div class="sub-bar"><div class="sub-fill '+fillCls(perf)+'" id="sf-p" style="width:0%"></div></div></div>'+
+          '<div class="sub-sc"><div class="sub-hd"><span>Security</span><span>'+sec.toFixed(2)+'</span></div><div class="sub-bar"><div class="sub-fill '+fillCls(sec)+'" id="sf-s" style="width:0%"></div></div></div>'+
+          '<div class="sub-sc"><div class="sub-hd"><span>Readability</span><span>'+read.toFixed(2)+'</span></div><div class="sub-bar"><div class="sub-fill '+fillCls(read)+'" id="sf-r" style="width:0%"></div></div></div>'+
         '</div></div>'+
     '</div>'+
     issHtml+optHtml+
@@ -786,12 +786,12 @@ function renderResult(d,origSql){
   requestAnimationFrame(()=>{
     setTimeout(()=>{const arc=document.getElementById('ring-arc');if(arc)arc.style.strokeDashoffset=finalDash.toFixed(2);},50);
     setTimeout(()=>{
-      const sp=document.getElementById('sf-p');if(sp)sp.style.width=perf+'%';
-      const ss=document.getElementById('sf-s');if(ss)ss.style.width=sec+'%';
-      const sr=document.getElementById('sf-r');if(sr)sr.style.width=read+'%';
+      const sp=document.getElementById('sf-p');if(sp)sp.style.width=(perf*100)+'%';
+      const ss=document.getElementById('sf-s');if(ss)ss.style.width=(sec*100)+'%';
+      const sr=document.getElementById('sf-r');if(sr)sr.style.width=(read*100)+'%';
     },150);
-    const num=document.getElementById('ring-num');let cur=0;const step=Math.max(1,Math.ceil(score/40));
-    const timer=setInterval(()=>{cur=Math.min(cur+step,score);if(num)num.textContent=cur;if(cur>=score)clearInterval(timer);},30);
+    const num=document.getElementById('ring-num');let cur=0;const target=Math.round(score*100);const step=Math.max(1,Math.ceil(target/40));
+    const timer=setInterval(()=>{cur=Math.min(cur+step,target);if(num)num.textContent=(cur/100).toFixed(2);if(cur>=target)clearInterval(timer);},30);
   });
 }
 function copyOpt(){
@@ -895,7 +895,7 @@ async function loadDashboard(force){
       fetch(BASE+'/api/sql/history').then(r=>r.json()).catch(()=>({items:[]})),
     ]);
     const sv=(id,val)=>{const el=document.getElementById(id);if(el)el.textContent=val;};
-    sv('d-total',sr.totalAnalyzed??'0');sv('d-avg',sr.averageRewardScore??'0');
+    sv('d-total',sr.totalAnalyzed??'0');sv('d-avg',sr.averageRewardScore!=null?Number(sr.averageRewardScore).toFixed(2):'0');
     sv('d-fb',sr.totalFeedbackGiven??'0');sv('d-helpful',sr.helpfulFeedbackPercent??'0');
     const dist=sr.scoreDistribution||[],chartEl=document.getElementById('chart');
     if(dist.length&&dist.some(b=>(b.count||0)>0)){
@@ -908,11 +908,11 @@ async function loadDashboard(force){
     const history=hr.items||hr.history||[],tbody=document.getElementById('hist-body');
     if(!history.length){tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:28px;color:var(--dim)">No history yet</td></tr>';return;}
     tbody.innerHTML=history.slice(0,50).map(h=>{
-      const s=+(h.rewardScore||0),bc=s>=70?'scg':s>=40?'scy':'scr';
+      const s=+(h.rewardScore||0),bc=s>=0.7?'scg':s>=0.4?'scy':'scr';
       const preview=(h.queryPreview||h.query||'').substring(0,60).replace(/\s+/g,' ');
       const ts=h.analyzedAt||h.timestamp||'';
       const time=ts?new Date(ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'--';
-      return '<tr><td style="font-family:var(--mono);font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(preview)+'">'+esc(preview)+'</td><td><span style="font-size:11px;color:var(--muted)">'+esc(h.dialect||'--')+'</span></td><td><span class="sc-badge '+bc+'">'+s+'</span></td><td style="font-size:12px">'+(h.issueCount||0)+'</td><td style="font-size:11px">'+time+'</td></tr>';
+      return '<tr><td style="font-family:var(--mono);font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(preview)+'">'+esc(preview)+'</td><td><span style="font-size:11px;color:var(--muted)">'+esc(h.dialect||'--')+'</span></td><td><span class="sc-badge '+bc+'">'+s.toFixed(2)+'</span></td><td style="font-size:12px">'+(h.issueCount||0)+'</td><td style="font-size:11px">'+time+'</td></tr>';
     }).join('');
     if(force)toast('Dashboard refreshed');
   }catch(e){if(force)toast('Failed to refresh: '+e.message);}

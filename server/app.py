@@ -473,13 +473,17 @@ def analyze(req: AnalyzeReq):
     else:
         data = rule_data
     opt = (data.get("optimizedQuery") or "").strip()
-    if data.get("rewardScore", 100) < 100 and (not opt or opt == req.query.strip()):
+    if data.get("rewardScore", 1.0) < 1.0 and (not opt or opt == req.query.strip()):
         data["optimizedQuery"] = _build_optimized_query(req.query, data.get("issues", []))
     data["optimizedQuery"] = _clean_sql_output(data.get("optimizedQuery") or "")
     data["optimizedQuery"] = re.sub(r'\d+["\']\s*>', '', data.get("optimizedQuery", ""))
     data["optimizedQuery"] = re.sub(r'\d{3,}>', '', data.get("optimizedQuery", ""))
     record = {"id":str(uuid.uuid4()),"originalQuery":req.query,"dialect":req.dialect,
               "analyzedAt":datetime.now(timezone.utc).isoformat(),"feedbackRating":None,**data}
+    # Convert scores from 0-100 to 0-1 range (strictly between 0 and 1)
+    for key in ("rewardScore","performanceScore","securityScore","readabilityScore"):
+        v = record.get(key, 0)
+        record[key] = round(max(0.001, min(0.999, float(v) / 100)), 4)
     _history.insert(0, record)
     if len(_history) > 200: _history.pop()
     return record
@@ -506,19 +510,19 @@ def history():
 @app.get("/api/sql/stats")
 def stats():
     total = len(_history)
-    avg   = round(sum(r["rewardScore"] for r in _history)/total) if total else 0
+    avg   = round(sum(r["rewardScore"] for r in _history)/total, 3) if total else 0
     tl_fb = len(_feedback)
     helpful = sum(1 for f in _feedback if f["rating"]=="helpful")
     hp_pct  = round(helpful/tl_fb*100) if tl_fb else 0
-    dist = [{"range":"0-20","count":0},{"range":"21-40","count":0},{"range":"41-60","count":0},
-            {"range":"61-80","count":0},{"range":"81-100","count":0}]
+    dist = [{"range":"0.0-0.2","count":0},{"range":"0.2-0.4","count":0},{"range":"0.4-0.6","count":0},
+            {"range":"0.6-0.8","count":0},{"range":"0.8-1.0","count":0}]
     for r in _history:
         s = r["rewardScore"]
-        if   s<=20: dist[0]["count"]+=1
-        elif s<=40: dist[1]["count"]+=1
-        elif s<=60: dist[2]["count"]+=1
-        elif s<=80: dist[3]["count"]+=1
-        else:       dist[4]["count"]+=1
+        if   s<=0.2: dist[0]["count"]+=1
+        elif s<=0.4: dist[1]["count"]+=1
+        elif s<=0.6: dist[2]["count"]+=1
+        elif s<=0.8: dist[3]["count"]+=1
+        else:        dist[4]["count"]+=1
     return {"totalAnalyzed":total,"averageRewardScore":avg,"totalFeedbackGiven":tl_fb,
             "helpfulFeedbackPercent":hp_pct,"scoreDistribution":dist}
 
