@@ -112,7 +112,7 @@ class SQLQueryEnvironment:
             return self._reject(f"Grader error: {exc}", "")
         if reward > self._state.best_reward:
             self._state.best_reward = reward
-        solved    = reward >= 0.99
+        solved    = reward >= 0.95
         exhausted = self._state.step_count >= self._state.max_steps
         done      = solved or exhausted
         if solved: self._state.task_solved = True

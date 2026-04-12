@@ -185,7 +185,7 @@ _EASY_EXPECTED = [
 
 def grade_easy(sql: str, conn: sqlite3.Connection) -> Tuple[float, Dict, str]:
     rows, err = run_query(conn, sql)
-    if err: return 0.0, {"correct_results":0.0,"schema_compliance":0.0,"query_efficiency":0.0}, f"Query error: {err}"
+    if err: return 0.001, {"correct_results":0.0,"schema_compliance":0.0,"query_efficiency":0.0}, f"Query error: {err}"
     norm = []
     for r in rows:
         nr = {}
@@ -202,7 +202,8 @@ def grade_easy(sql: str, conn: sqlite3.Connection) -> Tuple[float, Dict, str]:
     if row_sc < 0.3: hint = "❌ Filter WHERE country='India', SELECT name,city,tier, ORDER BY name ASC"
     elif row_sc < 0.7: hint = "⚠️ Partial — check India filter and name ordering"
     else: hint = "✅ Correct!"
-    return round(total,4), {"correct_results":round(row_sc,3),"schema_compliance":round(sch_sc,3),"query_efficiency":round(eff_sc,3)}, hint
+    total = max(0.001, min(0.999, round(total, 4)))
+    return total, {"correct_results":round(row_sc,3),"schema_compliance":round(sch_sc,3),"query_efficiency":round(eff_sc,3)}, hint
 
 TASK_EASY = TaskDefinition(
     task_id="easy_select", difficulty="easy", title="Indian Customer Directory",
@@ -227,7 +228,7 @@ _MEDIUM_EXPECTED = [
 
 def grade_medium(sql: str, conn: sqlite3.Connection) -> Tuple[float, Dict, str]:
     rows, err = run_query(conn, sql)
-    if err: return 0.0, {"correct_results":0.0,"schema_compliance":0.0,"query_efficiency":0.0}, f"Query error: {err}"
+    if err: return 0.001, {"correct_results":0.0,"schema_compliance":0.0,"query_efficiency":0.0}, f"Query error: {err}"
     norm = []
     for r in rows:
         nr = {}
@@ -245,7 +246,8 @@ def grade_medium(sql: str, conn: sqlite3.Connection) -> Tuple[float, Dict, str]:
     if sch_sc < 0.5: hint = "❌ JOIN customers→orders→order_items"
     elif row_sc < 0.3: hint = "❌ Filter WHERE status='delivered', GROUP BY customer, SUM(quantity*unit_price)"
     else: hint = "✅ Correct!" if row_sc >= 0.9 else "⚠️ Check delivered filter and revenue calculation"
-    return round(total,4), {"correct_results":round(row_sc,3),"schema_compliance":round(sch_sc,3),"query_efficiency":round(eff_sc,3)}, hint
+    total = max(0.001, min(0.999, round(total, 4)))
+    return total, {"correct_results":round(row_sc,3),"schema_compliance":round(sch_sc,3),"query_efficiency":round(eff_sc,3)}, hint
 
 TASK_MEDIUM = TaskDefinition(
     task_id="medium_join", difficulty="medium", title="Customer Revenue Report",
@@ -267,7 +269,7 @@ _HARD_EXPECTED = [
 
 def grade_hard(sql: str, conn: sqlite3.Connection) -> Tuple[float, Dict, str]:
     rows, err = run_query(conn, sql)
-    if err: return 0.0, {"correct_results":0.0,"schema_compliance":0.0,"query_efficiency":0.0}, f"Query error: {err}"
+    if err: return 0.001, {"correct_results":0.0,"schema_compliance":0.0,"query_efficiency":0.0}, f"Query error: {err}"
     norm = []
     for r in rows:
         nr = {}
@@ -289,7 +291,8 @@ def grade_hard(sql: str, conn: sqlite3.Connection) -> Tuple[float, Dict, str]:
     if sch_sc < 0.5: hint = "❌ JOIN products+order_items+reviews"
     elif row_sc < 0.3: hint = "❌ Use RANK() OVER (PARTITION BY category ORDER BY revenue DESC), filter WHERE rnk=1"
     else: hint = "✅ Correct!" if row_sc >= 0.9 else "⚠️ Check window function and category partitioning"
-    return round(total,4), {"correct_results":round(row_sc,3),"schema_compliance":round(sch_sc,3),"query_efficiency":round(eff_sc,3)}, hint
+    total = max(0.001, min(0.999, round(total, 4)))
+    return total, {"correct_results":round(row_sc,3),"schema_compliance":round(sch_sc,3),"query_efficiency":round(eff_sc,3)}, hint
 
 TASK_HARD = TaskDefinition(
     task_id="hard_subquery", difficulty="hard", title="Category Champion Report",
@@ -329,7 +332,7 @@ def grade_injection_fix(sql: str, conn=None) -> Tuple[float, Dict, str]:
     if _logic_preserved(sql): score += 0.25
     else: issues.append("Query logic not preserved (need users/username/password)")
     hint = " | ".join(issues) if issues else "✅ All injection issues resolved!"
-    return round(min(score,1.0),4), {"parameterized":score>=0.5,"no_concat":score>=0.75,"logic_ok":score>=1.0}, hint
+    return max(0.001, min(0.999, round(score, 4))), {"parameterized":score>=0.5,"no_concat":score>=0.75,"logic_ok":score>=1.0}, hint
 
 
 def grade_query_optimization(sql: str, conn=None) -> Tuple[float, Dict, str]:
@@ -343,7 +346,7 @@ def grade_query_optimization(sql: str, conn=None) -> Tuple[float, Dict, str]:
     if _has_limit(sql): score += 0.20
     else: issues.append("Add LIMIT 100")
     hint = " | ".join(issues) if issues else "✅ All performance issues resolved!"
-    return round(min(score,1.0),4), {"no_date_fn":_no_date_fn(sql),"has_range":_has_range(sql),"no_star":_no_star(sql),"has_limit":_has_limit(sql)}, hint
+    return max(0.001, min(0.999, round(score, 4))), {"no_date_fn":_no_date_fn(sql),"has_range":_has_range(sql),"no_star":_no_star(sql),"has_limit":_has_limit(sql)}, hint
 
 
 def grade_complex_rewrite(sql: str, conn=None) -> Tuple[float, Dict, str]:
@@ -361,7 +364,7 @@ def grade_complex_rewrite(sql: str, conn=None) -> Tuple[float, Dict, str]:
         if not _has_group_by(sql): issues.append("Add GROUP BY u.id,u.email,u.name")
         if not _has_order_by(sql): issues.append("Add ORDER BY total_spend DESC")
     hint = " | ".join(issues) if issues else "✅ All rewrite objectives met!"
-    return round(min(score,1.0),4), {"has_join":_has_join(sql),"no_correlated":_no_correlated(sql),"no_wildcard":_no_leading_wildcard(sql),"has_limit":_has_limit(sql)}, hint
+    return max(0.001, min(0.999, round(score, 4))), {"has_join":_has_join(sql),"no_correlated":_no_correlated(sql),"no_wildcard":_no_leading_wildcard(sql),"has_limit":_has_limit(sql)}, hint
 
 
 TASK_INJECTION = TaskDefinition(
