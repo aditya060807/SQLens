@@ -105,7 +105,7 @@ select,textarea{width:100%;background:rgba(0,0,0,.5);border:1px solid var(--bord
 select:hover,textarea:hover{border-color:rgba(99,102,241,.35)}
 select:focus,textarea:focus{border-color:rgba(99,102,241,.55);box-shadow:0 0 0 3px rgba(99,102,241,.1)}
 textarea{font-family:var(--mono);resize:none;line-height:1.65;font-size:12.5px}
-#sql-input{flex:1;min-height:80px;max-height:160px}
+#sql-input{flex:1;min-height:120px;max-height:280px}
 .hint-bar{font-size:11px;color:#a5b4fc;background:rgba(99,102,241,.07);border:1px solid rgba(99,102,241,.18);border-radius:var(--rs);padding:7px 11px;display:none;line-height:1.5;flex-shrink:0}
 .hint-bar.show{display:block}
 .ed-footer{padding:10px 16px 14px;border-top:1px solid var(--border);background:rgba(4,8,15,.95);flex-shrink:0}
@@ -312,7 +312,6 @@ textarea{font-family:var(--mono);resize:none;line-height:1.65;font-size:12.5px}
 <div class="pg on" id="pg-home">
   <div class="hero">
     <div class="hero-glow"></div><div class="hero-grid"></div>
-    <div class="hero-badge">&#127942; Meta PyTorch &#215; HuggingFace &#215; Scaler Hackathon</div>
     <h1><span class="grad">SQLens</span></h1>
     <p class="hero-sub">Paste any SQL query and get an AI-powered quality score (0&#8211;100), detected issues, and a production-ready optimized rewrite &#8212; instantly.</p>
     <div class="hero-btns">
@@ -464,19 +463,51 @@ textarea{font-family:var(--mono);resize:none;line-height:1.65;font-size:12.5px}
 <div class="pg" id="pg-about">
   <div class="about-wrap">
     <h1 style="text-align:center"><span class="grad">SQLens</span></h1>
-    <p style="text-align:center;font-size:17px;color:var(--muted);max-width:580px;margin:0 auto 40px">AI-powered SQL analysis that scores every query 0&#8211;100, detects real issues, and delivers production-ready rewrites instantly.</p>
+    <p style="text-align:center;font-size:17px;color:var(--muted);max-width:600px;margin:0 auto 40px">An AI-powered SQL analysis platform that scores every query 0&ndash;100, detects real issues, and delivers production-ready rewrites &mdash; instantly.</p>
+
+    <h2>What is SQLens?</h2>
+    <p>SQLens is a real-world SQL quality analyzer. It gives every SQL query an honest quality score from 0 to 100 across three dimensions: Security, Performance, and Readability. Below 100 means there are specific, fixable problems &mdash; and SQLens shows you exactly what they are and how to fix them, with a corrected query that would score 100.</p>
+
+    <h2>Why Does This Exist?</h2>
+    <p>The same costly SQL mistakes appear in production systems every day. SQL injection vulnerabilities cause data breaches averaging $4.5M. Queries wrapping indexed columns in YEAR() or MONTH() silently disable indexes and turn 2ms queries into 8-second full table scans. Correlated subqueries execute once per row, turning a single report into 50,000 database round-trips. SELECT * wastes I/O and breaks apps when schemas change. DELETE or UPDATE without WHERE destroys entire tables. Developers have no standard way to get a quantified quality score on SQL &mdash; until now.</p>
+
+    <h2>How It Works</h2>
+    <div class="prob-grid" style="margin-bottom:24px">
+      <div class="prob-card"><div class="prob-ic">1&#65039;&#8419;</div><div><h4>Paste Any SQL</h4><p>Drop in any query &mdash; broken, slow, or vulnerable. Choose PostgreSQL, MySQL, or SQLite dialect. Optionally add schema context for more accurate analysis.</p></div></div>
+      <div class="prob-card"><div class="prob-ic">2&#65039;&#8419;</div><div><h4>AI + Rule Engine Analyzes</h4><p>Qwen2.5-72B reviews the query for security, performance, and readability issues. A rule-based engine runs as fallback &mdash; always works, even without an API key.</p></div></div>
+      <div class="prob-card"><div class="prob-ic">3&#65039;&#8419;</div><div><h4>Score + Optimized Rewrite</h4><p>See your score, a table of issues with exact fixes, and &mdash; if score is below 100 &mdash; a fully optimized rewrite that addresses every detected problem and would score 100.</p></div></div>
+    </div>
+
+    <h2>Problems Detected and Solved</h2>
+    <div class="prob-grid" style="margin-bottom:24px">
+      <div class="prob-card"><div class="prob-ic">&#128274;</div><div><h4>SQL Injection &rarr; Parameterized Queries</h4><p>String concatenation and OR 1=1 patterns are flagged as critical. The optimized query uses $1/$2 parameterized placeholders &mdash; the only correct fix.</p></div></div>
+      <div class="prob-card"><div class="prob-ic">&#9889;</div><div><h4>Index Scan &rarr; Date Range Fix</h4><p>YEAR()/MONTH() on indexed columns is flagged. The rewrite uses a date range that keeps the index active and runs 100&ndash;1000x faster.</p></div></div>
+      <div class="prob-card"><div class="prob-ic">&#128260;</div><div><h4>N+1 Subqueries &rarr; JOIN Rewrite</h4><p>Correlated subqueries are detected and rewritten as proper JOINs. Executes once instead of N times &mdash; often 100x faster on large tables.</p></div></div>
+      <div class="prob-card"><div class="prob-ic">&#128230;</div><div><h4>SELECT * &rarr; Explicit Columns</h4><p>SELECT * is flagged. The optimized query lists only the columns needed, reducing I/O and enabling index-only scans.</p></div></div>
+      <div class="prob-card"><div class="prob-ic">&#128465;&#65039;</div><div><h4>Dangerous DML &rarr; Safety Warning</h4><p>DELETE or UPDATE without WHERE is flagged as critical. The rewrite adds a WHERE clause to prevent accidental full-table destruction.</p></div></div>
+      <div class="prob-card"><div class="prob-ic">&#128202;</div><div><h4>No Feedback Loop &rarr; Instant Score</h4><p>Every query gets a score from 0 to 100. Score 100 = production-ready. Below 100 = here is exactly what to fix and the corrected query.</p></div></div>
+    </div>
+
     <h2>How Scoring Works</h2>
-    <p>Every query starts at 100. Points are deducted only for real, specific problems.</p>
+    <p>Every query starts at 100. Points are deducted only for real, specific problems &mdash; never for style preferences.</p>
     <div class="iss-wrap" style="margin-bottom:24px">
       <table class="iss-tbl">
         <thead><tr><th>Issue Type</th><th>Severity</th><th>Deduction</th><th>Example</th></tr></thead>
         <tbody>
-          <tr class="rc"><td class="sev sc">&#128680; Critical</td><td>Security / Correctness</td><td style="color:var(--red);font-weight:700">&#8722;30 pts</td><td style="color:var(--muted)">SQL injection, DELETE without WHERE</td></tr>
-          <tr class="rw"><td class="sev sw">&#9888;&#65039; Warning</td><td>Performance</td><td style="color:var(--yellow);font-weight:700">&#8722;15 pts</td><td style="color:var(--muted)">SELECT *, YEAR() on indexed column, leading LIKE %</td></tr>
-          <tr class="ri"><td class="sev si">&#8505;&#65039; Info</td><td>Readability</td><td style="color:var(--blue-l);font-weight:700">&#8722;5 pts</td><td style="color:var(--muted)">Missing LIMIT on unbounded query</td></tr>
+          <tr class="rc"><td class="sev sc">&#128680; Critical</td><td>Security / Correctness</td><td style="color:var(--red);font-weight:700">&minus;30 pts</td><td style="color:var(--muted)">SQL injection, DELETE without WHERE</td></tr>
+          <tr class="rw"><td class="sev sw">&#9888;&#65039; Warning</td><td>Performance</td><td style="color:var(--yellow);font-weight:700">&minus;15 pts</td><td style="color:var(--muted)">SELECT *, YEAR() on indexed column, leading LIKE %</td></tr>
+          <tr class="ri"><td class="sev si">&#8505;&#65039; Info</td><td>Readability</td><td style="color:var(--blue-l);font-weight:700">&minus;5 pts</td><td style="color:var(--muted)">Missing LIMIT on unbounded query</td></tr>
         </tbody>
       </table>
     </div>
+
+    <h2>Live Tasks (OpenEnv)</h2>
+    <p>SQLens includes 6 graded tasks for AI agent training via the OpenEnv standard interface (reset/step/state):</p>
+    <div class="prob-grid" style="margin-bottom:24px">
+      <div class="prob-card"><div class="prob-ic">&#127891;</div><div><h4>3 SQL Tutor Tasks</h4><p>Run live on a real SQLite e-commerce database (8 customers, 10 products, 12 orders). Write queries and see actual results. Easy &rarr; Medium &rarr; Hard.</p></div></div>
+      <div class="prob-card"><div class="prob-ic">&#9889;</div><div><h4>3 SQL Optimizer Tasks</h4><p>Fix real broken production queries: SQL injection, full table scan, N+1 correlated subqueries. Each task has a grader that scores 0.0&ndash;1.0.</p></div></div>
+    </div>
+
     <h2>API Endpoints</h2>
     <div class="api-wrap">
       <table class="api-tbl">
@@ -486,11 +517,14 @@ textarea{font-family:var(--mono);resize:none;line-height:1.65;font-size:12.5px}
           <tr><td><span class="method m-post">POST</span></td><td style="font-family:var(--mono)">/step</td><td>Submit SQL and get reward + feedback</td></tr>
           <tr><td><span class="method m-get">GET</span></td><td style="font-family:var(--mono)">/state</td><td>Get current episode state</td></tr>
           <tr><td><span class="method m-get">GET</span></td><td style="font-family:var(--mono)">/tasks</td><td>List all 6 available tasks</td></tr>
-          <tr><td><span class="method m-get">GET</span></td><td style="font-family:var(--mono)">/health</td><td>Health check (hackathon ping)</td></tr>
+          <tr><td><span class="method m-get">GET</span></td><td style="font-family:var(--mono)">/health</td><td>Health check</td></tr>
           <tr><td><span class="method m-post">POST</span></td><td style="font-family:var(--mono)">/api/sql/analyze</td><td>Full AI analysis with score + optimized query</td></tr>
+          <tr><td><span class="method m-get">GET</span></td><td style="font-family:var(--mono)">/api/sql/history</td><td>Recent analysis history</td></tr>
+          <tr><td><span class="method m-get">GET</span></td><td style="font-family:var(--mono)">/api/sql/stats</td><td>Aggregate statistics</td></tr>
         </tbody>
       </table>
     </div>
+
     <h2>Links</h2>
     <div class="about-links">
       <a class="about-link" href="https://github.com/aditya060807/SQLens" target="_blank">&#128230; GitHub</a>
@@ -656,13 +690,21 @@ function cleanSQL(sql){
   return sql.trim();
 }
 function hlSQL(sql){
-  sql=cleanSQL(sql);if(!sql)return'';
+  // sql must already be clean plain text — do NOT pass HTML here
+  if(!sql)return'';
+  // Escape HTML entities first so < > & in SQL don't break the markup
   let s=sql.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  ['SELECT','FROM','WHERE','JOIN','LEFT JOIN','RIGHT JOIN','INNER JOIN','ON','AND','OR','NOT','IN','IS','NULL','AS','GROUP BY','ORDER BY','HAVING','LIMIT','OFFSET','WITH','UNION','ALL','DISTINCT','CASE','WHEN','THEN','ELSE','END','INSERT','UPDATE','DELETE','SET','VALUES','EXISTS','BETWEEN','LIKE','COUNT','SUM','AVG','MAX','MIN','ROUND','COALESCE','CAST','RANK','ROW_NUMBER','PARTITION BY','OVER','ASC','DESC','TRUE','FALSE','BY','INTO'].forEach(k=>{
-    s=s.replace(new RegExp('\\b('+k.replace(/ /g,'\\s+')+'\\b)','gi'),'<span style="color:#60a5fa;font-weight:600">$1</span>');
+  // Highlight keywords (word-boundary safe)
+  const kws=['SELECT','FROM','WHERE','JOIN','LEFT JOIN','RIGHT JOIN','INNER JOIN','CROSS JOIN','ON','AND','OR','NOT','IN','IS','NULL','AS','GROUP BY','ORDER BY','HAVING','LIMIT','OFFSET','WITH','UNION','ALL','DISTINCT','CASE','WHEN','THEN','ELSE','END','INSERT','UPDATE','DELETE','SET','VALUES','EXISTS','BETWEEN','LIKE','COUNT','SUM','AVG','MAX','MIN','ROUND','COALESCE','CAST','RANK','ROW_NUMBER','DENSE_RANK','PARTITION BY','OVER','ASC','DESC','TRUE','FALSE','BY','INTO','RETURNING'];
+  kws.forEach(k=>{
+    const re=new RegExp('(?<![\\w])('+k.replace(/ /g,'\\s+')+'(?![\\w]))','gi');
+    s=s.replace(re,'<span style="color:#60a5fa;font-weight:600">$1</span>');
   });
+  // Strings (green)
   s=s.replace(/('(?:[^'\\]|\\.)*')/g,'<span style="color:#86efac">$1</span>');
-  s=s.replace(/\b(\d+(?:\.\d+)?)\b/g,'<span style="color:#fdba74">$1</span>');
+  // Numbers (orange) — only standalone numbers, not inside words
+  s=s.replace(/(?<![a-zA-Z_\$])\b(\d+(?:\.\d+)?)\b(?![a-zA-Z_])/g,'<span style="color:#fdba74">$1</span>');
+  // Comments (dim)
   s=s.replace(/(--[^\n]*)/g,'<span style="color:#3d5070;font-style:italic">$1</span>');
   return s;
 }
