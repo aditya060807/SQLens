@@ -840,11 +840,22 @@ async function loadTasks(){
       const tags=(t.tags||[]).map(tag=>'<span class="tag">'+esc(tag)+'</span>').join('');
       const isTutor=t.task_type==='tutor';
       const typeLabel=isTutor?'&#127891; Tutor &mdash; runs live SQLite':'&#9889; Optimizer &mdash; fix the broken query';
+      // Show original query preview for optimizer tasks
+      let queryPreview='';
+      if(!isTutor&&t.original_query){
+        const lines=t.original_query.trim().split('\n').slice(0,4).join('\n');
+        queryPreview='<pre style="margin-top:12px;padding:10px 12px;background:rgba(0,0,0,.45);border:1px solid var(--border);border-radius:8px;font-family:var(--mono);font-size:10.5px;color:#94a3b8;overflow:hidden;white-space:pre-wrap;word-break:break-all;max-height:80px;line-height:1.5">'+esc(lines)+(t.original_query.split('\n').length>4?'\n...' : '')+'</pre>';
+      } else if(isTutor){
+        const schemaHints={easy_select:'customers(name, city, tier) — filter by country',medium_join:'customers → orders → order_items — SUM revenue',hard_subquery:'products + order_items + reviews — RANK() per category'};
+        const sh=schemaHints[t.task_id]||'Live SQLite e-commerce database';
+        queryPreview='<div style="margin-top:10px;padding:8px 12px;background:rgba(34,197,94,.05);border:1px solid rgba(34,197,94,.15);border-radius:8px;font-size:11px;color:#86efac;font-family:var(--mono)">&#128200; '+esc(sh)+'</div>';
+      }
       return '<div class="task-card" onclick="loadTask('+JSON.stringify(t.task_id)+')">'+
         '<div class="diff-badge '+dc+'">'+diff+' &middot; '+esc(t.task_type||'task')+'</div>'+
         '<h3>'+esc(t.title||t.task_id)+'</h3>'+
         '<p>'+esc(t.description||'')+'</p>'+
-        '<div class="task-tags">'+tags+(t.dialect?'<span class="tag">'+esc(t.dialect)+'</span>':'')+(t.max_steps?'<span class="tag">max '+t.max_steps+' steps</span>':'')+'</div>'+
+        queryPreview+
+        '<div class="task-tags" style="margin-top:10px">'+tags+(t.dialect?'<span class="tag">'+esc(t.dialect)+'</span>':'')+(t.max_steps?'<span class="tag">max '+t.max_steps+' steps</span>':'')+'</div>'+
         '<div class="task-action">'+typeLabel+' &#8594;</div>'+
         '</div>';
     }).join('');

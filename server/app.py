@@ -586,3 +586,14 @@ def run_sql(req: RunReq):
                 "suggestion":_get_error_suggestion(err,query)}
     cols = list(rows[0].keys()) if rows else []
     return {"success":True,"rows":rows[:100],"columns":cols,"rowCount":len(rows),"error":"","schemaInfo":SCHEMA_INFO}
+
+
+def main():
+    """Entry point for openenv / uv run server."""
+    import uvicorn
+    port = int(os.environ.get("PORT", 7860))
+    uvicorn.run("server.app:app", host="0.0.0.0", port=port, workers=1)
+
+
+if __name__ == "__main__":
+    main()
