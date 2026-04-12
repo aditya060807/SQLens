@@ -7,7 +7,7 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: mit
-short_description: AI-powered SQL analyzer — score 0-100, detect issues, get optimized rewrites
+short_description: AI SQL analyzer — score queries 0-100, detect issues
 ---
 
 # SQLens — AI SQL Analyzer
