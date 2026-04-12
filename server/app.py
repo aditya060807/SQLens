@@ -368,10 +368,19 @@ def _build_optimized_query(query: str, issues: list) -> str:
         opt = re.sub(r'year\s*\(\w+\)\s*=\s*\d{4}', f"{col} >= '{yr}-01-01' AND {col} < '{int(yr)+1}-01-01'", opt, flags=re.I)
         opt = re.sub(r'\s*and\s*month\s*\(\w+\)\s*=\s*\d+','',opt,flags=re.I)
     if re.search(r"'\s*\|\||\|\|\s*'", opt):
-        if 'username' in opt.lower() and 'password' in opt.lower():
+        lower_opt2 = opt.lower()
+        if 'username' in lower_opt2 and 'password' in lower_opt2:
             opt = "SELECT id, username, role\nFROM users\nWHERE username = $1\n  AND password_hash = $2"
+        else:
+            # Generic: replace all '' || var || '' patterns with $N placeholders
+            param_n = [0]
+            def _replace_concat(m):
+                param_n[0] += 1
+                return f'${param_n[0]}'
+            opt = re.sub(r"''\s*\|\|\s*\w+\s*\|\|\s*''", _replace_concat, opt)
+            opt = re.sub(r"'\s*\|\|\s*\w+\s*\|\|\s*'", _replace_concat, opt)
     if re.search(r"or\s+1\s*=\s*1", opt, re.I):
-        opt = re.sub(r"\s*or\s+1\s*=\s*1",'',opt,flags=re.I)
+        opt = re.sub(r"\s*or\s+1\s*=\s*1", '', opt, flags=re.I)
         if 'username' in opt.lower():
             opt = "SELECT id, username, role\nFROM users\nWHERE username = $1\n  AND password_hash = $2"
     if re.search(r"like\s+['\"]%(\w+)", opt, re.I):
