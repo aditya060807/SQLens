@@ -196,6 +196,14 @@ textarea{font-family:var(--mono);resize:none;line-height:1.65;font-size:12.5px}
 
 <body>
 <div class="toast" id="toast"></div>
+<!-- Cold-start overlay: shown until first /health 200 -->
+<div id="cold-overlay" style="position:fixed;inset:0;background:#04080f;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;transition:opacity .5s">
+  <div style="font-size:48px">🔍</div>
+  <div style="font-size:22px;font-weight:800;background:linear-gradient(135deg,#3b82f6,#6366f1,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;letter-spacing:-1px">SQLens</div>
+  <div style="font-size:13px;color:#7a90b0">Starting up…</div>
+  <div style="width:180px;height:3px;background:#162236;border-radius:2px;overflow:hidden"><div id="cold-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#3b82f6,#8b5cf6);border-radius:2px;transition:width .4s ease"></div></div>
+  <div id="cold-msg" style="font-size:11px;color:#3d5070">Connecting to server…</div>
+</div>
 <nav>
   <div class="nav-in">
     <div class="logo" onclick="show('home')">
@@ -218,7 +226,7 @@ textarea{font-family:var(--mono);resize:none;line-height:1.65;font-size:12.5px}
       <button class="nl"    id="nav-about"     onclick="show('about')">About</button>
     </div>
     <div class="nav-r">
-      <div class="live-dot"><span class="pulse"></span>Live</div>
+      <div class="live-dot" id="live-dot"><span class="pulse"></span><span id="live-txt">Live</span></div>
       <button class="ham" id="ham-btn" onclick="toggleMenu()" aria-label="Menu"><span></span><span></span><span></span></button>
     </div>
   </div>
@@ -456,6 +464,49 @@ async function loadTasks(){if(_tasksLoaded)return;const g=document.getElementByI
 function loadTask(t){if(typeof t==='string'){try{t=JSON.parse(t);}catch(e){return;}}const isTutor=t.task_type==='tutor';let query='',hint='';const dialect=(t.dialect||'sqlite').toLowerCase();if(!isTutor&&t.original_query){query=t.original_query;hint=`⚡ Optimizer Task: "${t.title}" — This is the broken production query. Click Analyze Query to see all issues, then fix them to score 100.`;}else{const starters={easy_select:`-- Task: ${t.title}\n-- ${t.description}\n\nSELECT name, city, tier\nFROM customers\nWHERE -- add your filter here\nORDER BY name ASC;`,medium_join:`-- Task: ${t.title}\n-- ${t.description}\n\nSELECT c.name, SUM(oi.quantity * oi.unit_price) AS total_revenue\nFROM customers c\nJOIN orders o ON -- add join condition\nJOIN order_items oi ON -- add join condition\nWHERE -- filter by status\nGROUP BY -- group by customer\nORDER BY total_revenue DESC;`,hard_subquery:`-- Task: ${t.title}\n-- ${t.description}\n\nWITH product_stats AS (\n  SELECT p.category, p.name AS product_name,\n         SUM(oi.quantity * oi.unit_price) AS revenue,\n         ROUND(AVG(r.rating), 2) AS avg_rating,\n         RANK() OVER (PARTITION BY p.category ORDER BY SUM(oi.quantity * oi.unit_price) DESC) AS rnk\n  FROM products p\n  JOIN order_items oi ON -- add join\n  LEFT JOIN reviews r ON -- add join\n  GROUP BY p.product_id, p.category, p.name\n)\nSELECT category, product_name AS top_product, revenue, avg_rating\nFROM product_stats\nWHERE rnk = 1\nORDER BY category;`};query=starters[t.task_id]||`-- Task: ${t.title}\n-- ${t.description}\n\nSELECT `;hint=`🎓 Tutor Task: "${t.title}" — Write your SQL query below. Your query runs on a live SQLite database.`;document.getElementById('ctx-input').value=TUTOR_SCHEMA;}document.getElementById('sql-input').value=query;document.getElementById('dialect').value={postgres:'postgres',postgresql:'postgres',mysql:'mysql',sqlite:'sqlite'}[dialect]||'sqlite';const hb=document.getElementById('hint-bar');hb.textContent=hint;hb.classList.add('show');resetResults();updateCharCount();show('analyze');}
 async function loadDashboard(force){const btn=document.getElementById('db-refresh-btn'),ic=document.getElementById('db-refresh-ic');if(btn)btn.disabled=true;if(ic)ic.textContent='⏳';try{const[sr,hr]=await Promise.all([fetch(BASE+'/api/sql/stats').then(r=>r.json()).catch(()=>({})),fetch(BASE+'/api/sql/history').then(r=>r.json()).catch(()=>({items:[]}))]);const setVal=(id,val)=>{const el=document.getElementById(id);if(el)el.textContent=val;};setVal('d-total',sr.totalAnalyzed??'0');setVal('d-avg',sr.averageRewardScore??'0');setVal('d-fb',sr.totalFeedbackGiven??'0');setVal('d-helpful',sr.helpfulFeedbackPercent??'0');const dist=sr.scoreDistribution||[],chartEl=document.getElementById('chart');if(dist.length&&dist.some(b=>(b.count||0)>0)){const maxV=Math.max(...dist.map(b=>b.count||0),1);chartEl.innerHTML=dist.map(b=>{const h=Math.max(4,Math.round(((b.count||0)/maxV)*150));return`<div class="bar-col" title="${b.count||0} queries scored ${b.range}"><div class="bar-ct">${b.count||0}</div><div class="bar-fill" style="height:${h}px"></div><div class="bar-lbl">${esc(b.range)}</div></div>`;}).join('');}else{chartEl.innerHTML='<div style="width:100%;text-align:center;color:var(--dim);font-size:12px;align-self:center">No data yet — analyze a query first</div>';}const history=hr.items||hr.history||[],tbody=document.getElementById('hist-body');if(!history.length){tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:28px;color:var(--dim)">No history yet</td></tr>';return;}tbody.innerHTML=history.slice(0,50).map(h=>{const s=+(h.rewardScore||0),bc=s>=70?'scg':s>=40?'scy':'scr';const preview=(h.queryPreview||h.query||'').substring(0,60).replace(/\s+/g,' ');const ts=h.analyzedAt||h.timestamp||'';const time=ts?new Date(ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—';return`<tr><td style="font-family:var(--mono);font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(preview)}">${esc(preview)}</td><td><span style="font-size:11px;color:var(--muted)">${esc(h.dialect||'—')}</span></td><td><span class="sc-badge ${bc}">${s}</span></td><td style="font-size:12px">${h.issueCount||0}</td><td style="font-size:11px">${time}</td></tr>`;}).join('');if(force)toast('Dashboard refreshed','🔄');}catch(e){if(force)toast('Failed to refresh: '+e.message,'❌');}finally{if(btn)btn.disabled=false;if(ic)ic.textContent='🔄';}}
 loadExamples();loadHomeStats();initAutocomplete();
+// Keep-alive: ping /health every 4 minutes to prevent HF free-tier sleep
+function _pingHealth(){
+  fetch(BASE+'/health').then(r=>{
+    const dot=document.getElementById('live-dot');
+    const txt=document.getElementById('live-txt');
+    if(dot&&txt){
+      if(r.ok){dot.style.borderColor='';txt.textContent='Live';}
+      else{dot.style.borderColor='rgba(239,68,68,.4)';txt.textContent='Error';}
+    }
+  }).catch(()=>{
+    const dot=document.getElementById('live-dot');
+    const txt=document.getElementById('live-txt');
+    if(dot&&txt){dot.style.borderColor='rgba(239,68,68,.4)';txt.textContent='Offline';}
+  });
+}
+setInterval(_pingHealth, 4*60*1000);
+
+// Cold-start handler: poll /health until 200, then fade out overlay
+(function(){
+  const overlay=document.getElementById('cold-overlay');
+  const bar=document.getElementById('cold-bar');
+  const msg=document.getElementById('cold-msg');
+  let pct=0, attempts=0;
+  function ping(){
+    attempts++;
+    pct=Math.min(90, pct+12);
+    bar.style.width=pct+'%';
+    fetch(BASE+'/health').then(r=>{
+      if(r.ok){
+        bar.style.width='100%';
+        msg.textContent='Ready!';
+        setTimeout(()=>{overlay.style.opacity='0';setTimeout(()=>overlay.remove(),500);},300);
+      } else {
+        msg.textContent='Starting server… ('+attempts+'s)';
+        setTimeout(ping, 1000);
+      }
+    }).catch(()=>{
+      msg.textContent='Waking up… ('+attempts+'s)';
+      setTimeout(ping, 1000);
+    });
+  }
+  ping();
+})();
 document.getElementById('sql-input').addEventListener('input',updateCharCount);
 updateCharCount();
 document.addEventListener('keydown',(e)=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){const btn=document.getElementById('run-btn');if(btn&&!btn.disabled&&document.getElementById('pg-analyze').classList.contains('on'))runAnalysis();}});
