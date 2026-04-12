@@ -12,6 +12,7 @@ COPY server/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
+COPY pyproject.toml ./pyproject.toml
 COPY models.py      ./models.py
 COPY tasks.py       ./tasks.py
 COPY inference.py   ./inference.py

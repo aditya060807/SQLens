@@ -825,6 +825,16 @@ async function sendFB(rating){
   toast(rating==='helpful'?'Thanks for the feedback!':'Feedback noted',rating==='helpful'?'&#128077;':'&#128078;');
 }
 const TUTOR_SCHEMA='customers(customer_id, name, email, country, city, joined_date, tier)\nproducts(product_id, name, category, subcategory, price, cost, stock)\norders(order_id, customer_id, order_date, shipped_date, status, discount_pct)\norder_items(item_id, order_id, product_id, quantity, unit_price)\nreviews(review_id, customer_id, product_id, rating, review_date)';
+// Canonical starter queries for all 6 tasks — loaded directly into the editor
+const TASK_QUERIES={
+  easy_select:"SELECT name, city, tier\nFROM customers\nWHERE country = 'India'\nORDER BY name ASC;",
+  medium_join:"SELECT c.name, SUM(oi.quantity * oi.unit_price) AS total_revenue\nFROM customers c\nJOIN orders o ON c.customer_id = o.customer_id\nJOIN order_items oi ON o.order_id = oi.order_id\nWHERE o.status = 'delivered'\nGROUP BY c.customer_id, c.name\nORDER BY total_revenue DESC;",
+  hard_subquery:"WITH ps AS (\n  SELECT p.category, p.name AS product_name,\n         SUM(oi.quantity * oi.unit_price) AS revenue,\n         ROUND(AVG(r.rating), 2) AS avg_rating,\n         RANK() OVER (PARTITION BY p.category ORDER BY SUM(oi.quantity * oi.unit_price) DESC) AS rnk\n  FROM products p\n  JOIN order_items oi ON p.product_id = oi.product_id\n  LEFT JOIN reviews r ON p.product_id = r.product_id\n  GROUP BY p.product_id, p.category, p.name\n)\nSELECT category, product_name AS top_product, revenue, avg_rating\nFROM ps\nWHERE rnk = 1\nORDER BY category;",
+  sql_injection_fix:"SELECT id, username, role\nFROM users\nWHERE username = '' || user_input || ''\n  AND password_hash = '' || pass_input || ''",
+  query_optimization:"SELECT *\nFROM orders\nWHERE YEAR(created_at) = 2024\n  AND MONTH(created_at) = 3\nORDER BY total_amount DESC",
+  complex_rewrite:"SELECT\n  (SELECT email FROM users WHERE id = o.customer_id),\n  (SELECT name  FROM users WHERE id = o.customer_id),\n  SUM(o.total_amount),\n  (SELECT MAX(created_at) FROM orders WHERE customer_id = o.customer_id)\nFROM orders o\nWHERE (SELECT email FROM users WHERE id = o.customer_id) LIKE '%@gmail.com'\nGROUP BY o.customer_id\nORDER BY SUM(o.total_amount) DESC",
+};
+
 let _tasksLoaded=false;
 const _tasksMap={};
 async function loadTasks(){
@@ -840,22 +850,16 @@ async function loadTasks(){
       const tags=(t.tags||[]).map(tag=>'<span class="tag">'+esc(tag)+'</span>').join('');
       const isTutor=t.task_type==='tutor';
       const typeLabel=isTutor?'&#127891; Tutor &mdash; runs live SQLite':'&#9889; Optimizer &mdash; fix the broken query';
-      // Show original query preview for optimizer tasks
-      let queryPreview='';
-      if(!isTutor&&t.original_query){
-        const lines=t.original_query.trim().split('\n').slice(0,4).join('\n');
-        queryPreview='<pre style="margin-top:12px;padding:10px 12px;background:rgba(0,0,0,.45);border:1px solid var(--border);border-radius:8px;font-family:var(--mono);font-size:10.5px;color:#94a3b8;overflow:hidden;white-space:pre-wrap;word-break:break-all;max-height:80px;line-height:1.5">'+esc(lines)+(t.original_query.split('\n').length>4?'\n...' : '')+'</pre>';
-      } else if(isTutor){
-        const schemaHints={easy_select:'customers(name, city, tier) — filter by country',medium_join:'customers → orders → order_items — SUM revenue',hard_subquery:'products + order_items + reviews — RANK() per category'};
-        const sh=schemaHints[t.task_id]||'Live SQLite e-commerce database';
-        queryPreview='<div style="margin-top:10px;padding:8px 12px;background:rgba(34,197,94,.05);border:1px solid rgba(34,197,94,.15);border-radius:8px;font-size:11px;color:#86efac;font-family:var(--mono)">&#128200; '+esc(sh)+'</div>';
-      }
-      return '<div class="task-card" onclick="loadTask('+JSON.stringify(t.task_id)+')">'+
+      // Show query preview for every task
+      const previewSql=TASK_QUERIES[t.task_id]||'';
+      const previewLines=previewSql.split('\n').slice(0,4).join('\n')+(previewSql.split('\n').length>4?'\n...':'');
+      const queryPreview=previewSql?'<pre style="margin-top:12px;padding:10px 12px;background:rgba(0,0,0,.5);border:1px solid var(--border);border-radius:8px;font-family:var(--mono);font-size:10.5px;color:#94a3b8;overflow:hidden;white-space:pre-wrap;word-break:break-all;max-height:76px;line-height:1.5">'+esc(previewLines)+'</pre>':'';
+      return '<div class="task-card" onclick="loadTask(\''+t.task_id+'\')">'+
         '<div class="diff-badge '+dc+'">'+diff+' &middot; '+esc(t.task_type||'task')+'</div>'+
         '<h3>'+esc(t.title||t.task_id)+'</h3>'+
         '<p>'+esc(t.description||'')+'</p>'+
         queryPreview+
-        '<div class="task-tags" style="margin-top:10px">'+tags+(t.dialect?'<span class="tag">'+esc(t.dialect)+'</span>':'')+(t.max_steps?'<span class="tag">max '+t.max_steps+' steps</span>':'')+'</div>'+
+        '<div class="task-tags">'+tags+(t.dialect?'<span class="tag">'+esc(t.dialect)+'</span>':'')+(t.max_steps?'<span class="tag">max '+t.max_steps+' steps</span>':'')+'</div>'+
         '<div class="task-action">'+typeLabel+' &#8594;</div>'+
         '</div>';
     }).join('');
@@ -868,21 +872,14 @@ function loadTask(taskId){
   const t=_tasksMap[taskId];
   if(!t){console.error('Task not found:',taskId);return;}
   const isTutor=t.task_type==='tutor';
-  let query='',hint='';
   const dialect=(t.dialect||'sqlite').toLowerCase();
-  if(!isTutor&&t.original_query){
-    query=t.original_query;
-    hint='Optimizer Task: "'+t.title+'" — This is the broken production query. Analyze it to see all issues, then fix them to score 100.';
-  }else{
-    const starters={
-      easy_select:'-- Task: '+t.title+'\n-- '+t.description+'\n\nSELECT name, city, tier\nFROM customers\nWHERE -- add your filter here\nORDER BY name ASC;',
-      medium_join:'-- Task: '+t.title+'\n-- '+t.description+'\n\nSELECT c.name, SUM(oi.quantity * oi.unit_price) AS total_revenue\nFROM customers c\nJOIN orders o ON -- add join condition\nJOIN order_items oi ON -- add join condition\nWHERE -- filter by status\nGROUP BY -- group by customer\nORDER BY total_revenue DESC;',
-      hard_subquery:'-- Task: '+t.title+'\n-- '+t.description+'\n\nWITH product_stats AS (\n  SELECT p.category, p.name AS product_name,\n         SUM(oi.quantity * oi.unit_price) AS revenue,\n         ROUND(AVG(r.rating), 2) AS avg_rating,\n         RANK() OVER (PARTITION BY p.category ORDER BY SUM(oi.quantity * oi.unit_price) DESC) AS rnk\n  FROM products p\n  JOIN order_items oi ON -- add join\n  LEFT JOIN reviews r ON -- add join\n  GROUP BY p.product_id, p.category, p.name\n)\nSELECT category, product_name AS top_product, revenue, avg_rating\nFROM product_stats\nWHERE rnk = 1\nORDER BY category;',
-    };
-    query=starters[t.task_id]||'-- Task: '+t.title+'\n-- '+t.description+'\n\nSELECT ';
-    hint='Tutor Task: "'+t.title+'" — Write your SQL query below. Your query runs on a live SQLite database and results appear instantly.';
-    document.getElementById('ctx-input').value=TUTOR_SCHEMA;
-  }
+  // Load the canonical query for this task directly into the editor
+  const query=TASK_QUERIES[taskId]||'SELECT ';
+  const hint=isTutor
+    ?'Tutor Task: "'+t.title+'" — Query runs on a live SQLite e-commerce database. Edit and Analyze to see your score.'
+    :'Optimizer Task: "'+t.title+'" — This is the broken production query. Analyze it to see all issues, then fix them.';
+  if(isTutor) document.getElementById('ctx-input').value=TUTOR_SCHEMA;
+  else document.getElementById('ctx-input').value=t.schema_context||'';
   document.getElementById('sql-input').value=query;
   document.getElementById('dialect').value={postgres:'postgres',postgresql:'postgres',mysql:'mysql',sqlite:'sqlite'}[dialect]||'sqlite';
   const hb=document.getElementById('hint-bar');hb.textContent=hint;hb.classList.add('show');
