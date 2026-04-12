@@ -435,8 +435,8 @@ textarea{font-family:var(--mono);resize:none;line-height:1.65;font-size:12.5px}
         <h1 style="font-size:26px;font-weight:800;letter-spacing:-.6px;margin-bottom:5px">Analytics Dashboard</h1>
         <p style="font-size:13.5px;color:var(--muted)">Real-time query analysis stats &#8212; updates after every analysis</p>
       </div>
-      <button class="db-refresh-btn" onclick="loadDashboard(true)" id="db-refresh-btn" title="Refresh dashboard data" style="flex-shrink:0;margin-top:4px">
-        <span id="db-refresh-ic">&#128260;</span> Refresh Data
+      <button class="db-refresh-btn" onclick="loadDashboard(true)" id="db-refresh-btn" title="Refresh">
+        Refresh
       </button>
     </div>
     <div class="stats-grid">
@@ -680,7 +680,12 @@ function stopScan(){
 }
 function cleanSQL(sql){
   if(!sql)return'';
-  sql=sql.replace(/\d+["']\s*>/g,'').replace(/\d{3,}>/g,'');
+  // Strip ALL digit+quote+> artifacts (AI garbage) — multiple passes
+  for(var _i=0;_i<3;_i++){
+    sql=sql.replace(/\d+["']\s*>/g,'');
+    sql=sql.replace(/\d{3,}>/g,'');
+    sql=sql.replace(/\d+\s*["']?\s*>/g,'');
+  }
   sql=sql.replace(/&quot;/g,'"').replace(/&gt;/g,'>').replace(/&lt;/g,'<').replace(/&amp;/g,'&');
   sql=sql.replace(/&#\d+;/g,'').replace(/&[a-z]+;/g,'');
   sql=sql.replace(/[\u201c\u201d]/g,'"').replace(/[\u2018\u2019]/g,"'");
@@ -740,7 +745,11 @@ function renderResult(d,origSql){
   const score=+(d.rewardScore||0),perf=+(d.performanceScore||0),sec=+(d.securityScore||0),read=+(d.readabilityScore||0);
   const issues=d.issues||[],optQ=d.optimizedQuery||'',expl=d.explanation||'',impact=d.realWorldImpact||'';
   const c=scoreColor(score),circ=2*Math.PI*46,finalDash=circ*(1-score/100);
-  const cleanedOptQ=cleanSQL(optQ)||optQ;
+  // Triple-clean the optimized query before any rendering
+  let cleanedOptQ=cleanSQL(optQ)||'';
+  // Extra nuclear pass: remove any remaining digit+quote+> artifacts
+  cleanedOptQ=cleanedOptQ.replace(/\d+["']\s*>/g,'').replace(/\d{3,}>/g,'').replace(/\d+\s*>/g,'').trim();
+  if(!cleanedOptQ&&optQ)cleanedOptQ=optQ.replace(/\d+["']\s*>/g,'').replace(/\d{3,}>/g,'').trim();
   window._currentOptQuery=cleanedOptQ||origSql;
   let issHtml='';
   if(issues.length>0){
@@ -870,8 +879,8 @@ function loadTask(taskId){
 }
 
 async function loadDashboard(force){
-  const btn=document.getElementById('db-refresh-btn'),ic=document.getElementById('db-refresh-ic');
-  if(btn)btn.disabled=true;if(ic)ic.textContent='...';
+  const btn=document.getElementById('db-refresh-btn');
+  if(btn)btn.disabled=true;
   try{
     const[sr,hr]=await Promise.all([
       fetch(BASE+'/api/sql/stats').then(r=>r.json()).catch(()=>({})),
@@ -897,9 +906,9 @@ async function loadDashboard(force){
       const time=ts?new Date(ts).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'--';
       return '<tr><td style="font-family:var(--mono);font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(preview)+'">'+esc(preview)+'</td><td><span style="font-size:11px;color:var(--muted)">'+esc(h.dialect||'--')+'</span></td><td><span class="sc-badge '+bc+'">'+s+'</span></td><td style="font-size:12px">'+(h.issueCount||0)+'</td><td style="font-size:11px">'+time+'</td></tr>';
     }).join('');
-    if(force)toast('Dashboard refreshed','&#128260;');
-  }catch(e){if(force)toast('Failed to refresh: '+e.message,'&#10060;');}
-  finally{if(btn)btn.disabled=false;if(ic)ic.textContent='&#128260;';}
+    if(force)toast('Dashboard refreshed');
+  }catch(e){if(force)toast('Failed to refresh: '+e.message);}
+  finally{if(btn)btn.disabled=false;if(ic)ic.textContent;}
 }
 // Init
 loadExamples();loadHomeStats();initAC();

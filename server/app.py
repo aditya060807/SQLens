@@ -201,6 +201,10 @@ async def ws(websocket: WebSocket):
 def _clean_sql_output(text: str) -> str:
     if not text: return ""
     t = text.strip()
+    # Multiple passes — AI sometimes encodes these in layers
+    for _ in range(3):
+        t = re.sub(r'\d+["\']\s*>', '', t)
+        t = re.sub(r'\d{3,}>', '', t)
     t = t.replace('&quot;','"').replace('&gt;','>').replace('&lt;','<').replace('&amp;','&')
     t = re.sub(r'&#\d+;','',t); t = re.sub(r'&[a-z]+;','',t)
     t = t.replace('\uff1e','>').replace('\uff1c','<')
@@ -223,7 +227,10 @@ def _clean_sql_output(text: str) -> str:
     else: return ""
     t = re.sub(r'\b\d{3,}\b\s*["\']?\s*>','',t)
     t = re.sub(r'\n{3,}','\n\n',t)
-    t = re.sub(r'\d+["\']\s*>','',t); t = re.sub(r'\d{3,}>','',t)
+    # Final nuclear pass
+    for _ in range(3):
+        t = re.sub(r'\d+["\']\s*>', '', t)
+        t = re.sub(r'\d{3,}>', '', t)
     t = re.sub(r'  +',' ',t)
     t = re.sub(r'<[a-z][a-z_0-9]*>','',t)
     return t.strip()
