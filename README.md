@@ -7,13 +7,13 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: mit
-short_description: AI SQL analyzer — score queries 0-100, detect issues
+short_description: AI SQL analyzer — score queries 0-1, detect issues
 ---
 
 # SQLens — AI SQL Analyzer
 
 AI-powered SQL analysis platform. Paste any SQL query and get:
-- Quality score (0–100) across security, performance, and readability
+- Quality score (0.0–1.0, higher is better) across security, performance, and readability
 - Detected issues with exact fixes
 - Production-ready optimized rewrite
 
