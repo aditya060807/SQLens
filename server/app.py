@@ -302,7 +302,7 @@ Return ONLY this JSON:
     }
 
 
-def _rule_analyze(query: str) -> dict:
+def _rule_analyze(query: str, context: Optional[str] = None) -> dict:
     lower = query.lower()
     issues = []
     perf, sec, read = 100, 100, 100
@@ -343,7 +343,7 @@ def _rule_analyze(query: str) -> dict:
     sec  = max(0, min(100, sec))
     read = max(0, min(100, read))
     reward = round((perf + sec + read) / 3)
-    opt_query = _build_optimized_query(query, issues) if issues else query
+    opt_query = _build_optimized_query(query, issues, context) if issues else query
     crit = any(i["severity"] == "critical" for i in issues)
     if not issues: explanation, real_impact = "Well-structured query with no detected issues.", "No issues — production ready."
     elif crit: explanation, real_impact = "Critical issues found that must be fixed before production.", "Risk of data loss or security breach."
@@ -353,33 +353,83 @@ def _rule_analyze(query: str) -> dict:
             "explanation":explanation,"realWorldImpact":real_impact}
 
 
-def _build_optimized_query(query: str, issues: list) -> str:
+def _columns_from_context(context: Optional[str], table: str) -> List[str]:
+    """Read column names for `table` from a CREATE TABLE statement the user pasted as schema context."""
+    if not context or not table:
+        return []
+    m = re.search(r'create\s+table\s+(?:if\s+not\s+exists\s+)?["`]?' + re.escape(table) + r'["`]?\s*\(', context, re.I)
+    if not m:
+        return []
+    i, depth, buf, parts = m.end(), 1, "", []
+    while i < len(context) and depth > 0:
+        ch = context[i]
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                break
+        if ch == "," and depth == 1:
+            parts.append(buf); buf = ""
+        else:
+            buf += ch
+        i += 1
+    parts.append(buf)
+    skip = {"primary", "foreign", "unique", "constraint", "key", "check", "index"}
+    cols = []
+    for part in parts:
+        tokens = part.strip().split()
+        if not tokens:
+            continue
+        name = tokens[0].strip('"`')
+        if name.lower() in skip or not re.match(r"^\w+$", name):
+            continue
+        cols.append(name)
+    return cols
+
+
+def _build_optimized_query(query: str, issues: list, context: Optional[str] = None) -> str:
+    """Rule-based rewrite. It only makes changes that keep the meaning of the query:
+    no invented columns, no automatic LIMIT, and date ranges that match the original filter."""
     opt = query.strip()
-    issue_msgs = " ".join(i.get("message","") for i in issues).lower()
+
+    # SELECT *  -> only expand when the real columns are known from the schema context
     if re.search(r'select\s+\*', opt, re.I):
-        tbl_match = re.search(r'from\s+(\w+)', opt, re.I)
-        tbl = tbl_match.group(1).lower() if tbl_match else ""
-        col_map = {
-            "customers":"customer_id, name, email, country, city, tier",
-            "products":"product_id, name, category, price, stock",
-            "orders":"order_id, customer_id, order_date, status, discount_pct",
-            "order_items":"item_id, order_id, product_id, quantity, unit_price",
-            "reviews":"review_id, customer_id, product_id, rating, review_date",
-            "users":"id, username, email, role","sessions":"id, user_id, created_at, expires_at",
-        }
-        cols = col_map.get(tbl, "id, name, created_at")
-        opt = re.sub(r'select\s+\*', f'SELECT {cols}', opt, flags=re.I)
-    if re.search(r'year\s*\((\w+)\)\s*=\s*(\d{4})', opt, re.I):
-        m = re.search(r'year\s*\((\w+)\)\s*=\s*(\d{4})', opt, re.I)
-        col, yr = m.group(1), m.group(2)
-        opt = re.sub(r'year\s*\(\w+\)\s*=\s*\d{4}', f"{col} >= '{yr}-01-01' AND {col} < '{int(yr)+1}-01-01'", opt, flags=re.I)
-        opt = re.sub(r'\s*and\s*month\s*\(\w+\)\s*=\s*\d+','',opt,flags=re.I)
+        tbl_match = re.search(r'from\s+["`]?(\w+)', opt, re.I)
+        tbl = tbl_match.group(1) if tbl_match else ""
+        cols = _columns_from_context(context, tbl)
+        if cols:
+            opt = re.sub(r'select\s+\*', "SELECT " + ", ".join(cols), opt, count=1, flags=re.I)
+        else:
+            opt = ("-- NOTE: no schema was given, so SELECT * was left unchanged. "
+                   "Replace it with only the columns you need.\n" + opt)
+
+    # YEAR()/MONTH() -> date range that matches the ORIGINAL filter (month stays month, year stays year)
+    ym = re.search(r'year\s*\(\s*(\w+)\s*\)\s*=\s*(\d{4})', opt, re.I)
+    if ym:
+        col, yr = ym.group(1), int(ym.group(2))
+        month_pat = r'month\s*\(\s*' + re.escape(col) + r'\s*\)\s*=\s*(\d{1,2})'
+        mm = re.search(month_pat, opt, re.I)
+        year_pat = r'year\s*\(\s*' + re.escape(col) + r'\s*\)\s*=\s*\d{4}'
+        if mm and 1 <= int(mm.group(1)) <= 12:
+            m = int(mm.group(1))
+            ny, nm = (yr + 1, 1) if m == 12 else (yr, m + 1)
+            rng = f"{col} >= '{yr:04d}-{m:02d}-01' AND {col} < '{ny:04d}-{nm:02d}-01'"
+            tmp = re.sub(r'\s+and\s+' + month_pat, '', opt, count=1, flags=re.I)
+            if tmp == opt:
+                tmp = re.sub(month_pat + r'\s+and\s+', '', opt, count=1, flags=re.I)
+            opt = re.sub(year_pat, rng, tmp, count=1, flags=re.I)
+        elif not re.search(r'month\s*\(', opt, re.I):
+            rng = f"{col} >= '{yr:04d}-01-01' AND {col} < '{yr + 1:04d}-01-01'"
+            opt = re.sub(year_pat, rng, opt, count=1, flags=re.I)
+        # MONTH() on a different column (or without YEAR) is left as is: it cannot be rewritten safely
+
+    # SQL injection patterns
     if re.search(r"'\s*\|\||\|\|\s*'", opt):
         lower_opt2 = opt.lower()
         if 'username' in lower_opt2 and 'password' in lower_opt2:
             opt = "SELECT id, username, role\nFROM users\nWHERE username = $1\n  AND password_hash = $2"
         else:
-            # Generic: replace all '' || var || '' patterns with $N placeholders
             param_n = [0]
             def _replace_concat(m):
                 param_n[0] += 1
@@ -390,18 +440,36 @@ def _build_optimized_query(query: str, issues: list) -> str:
         opt = re.sub(r"\s*or\s+1\s*=\s*1", '', opt, flags=re.I)
         if 'username' in opt.lower():
             opt = "SELECT id, username, role\nFROM users\nWHERE username = $1\n  AND password_hash = $2"
-    if re.search(r"like\s+['\"]%(\w+)", opt, re.I):
-        m = re.search(r"like\s+['\"]%(\w+)['\"]", opt, re.I)
-        if m: opt = re.sub(r"like\s+['\"]%\w+['\"]", f"LIKE '{m.group(1)}%'", opt, flags=re.I)
-    lower_opt = opt.lower()
-    if ('select' in lower_opt and 'limit' not in lower_opt and 'group by' not in lower_opt
-            and not re.search(r'delete|update|insert', lower_opt)):
-        opt = opt.rstrip(';').rstrip() + '\nLIMIT 100;'
-    if re.search(r'delete\s+from\s+\w+\s*$', opt, re.I):
-        opt = opt.rstrip(';') + "\nWHERE id = $1;"
+
+    # Leading wildcard LIKE '%x' -> 'x%' (this changes matching, so it is flagged in a comment)
+    lm = re.search(r"like\s+['\"]%(\w+)['\"]", opt, re.I)
+    if lm:
+        opt = re.sub(r"like\s+['\"]%\w+['\"]", f"LIKE '{lm.group(1)}%'", opt, count=1, flags=re.I)
+        opt = "-- NOTE: LIKE '%x' was changed to 'x%' (prefix match). Check this still matches what you need.\n" + opt
+
+    # DELETE / UPDATE without WHERE -> safe placeholder condition the user must adjust
+    if re.search(r'delete\s+from\s+\w+\s*;?\s*$', opt, re.I):
+        opt = opt.rstrip().rstrip(';') + "\nWHERE id = $1; -- replace with your real condition"
     if re.search(r'update\s+\w+\s+set\b', opt, re.I) and 'where' not in opt.lower():
-        opt = opt.rstrip(';') + "\nWHERE id = $1;"
+        opt = opt.rstrip().rstrip(';') + "\nWHERE id = $1; -- replace with your real condition"
     return opt
+
+
+def _apply_score_caps(data: dict) -> dict:
+    """Make scoring consistent: critical issue -> max 40, SELECT * -> max 85, YEAR()/MONTH() -> max 80
+    (the same rules the AI prompt asks for, now enforced for both the AI and the rule-based paths)."""
+    issues = data.get("issues") or []
+    msgs = " ".join(str(i.get("message", "")) for i in issues).lower()
+    cap = 100
+    if any(str(i.get("severity", "")).lower() == "critical" for i in issues):
+        cap = min(cap, 40)
+    if "select *" in msgs:
+        cap = min(cap, 85)
+    if "year()" in msgs or "month()" in msgs:
+        cap = min(cap, 80)
+    if data.get("rewardScore") is not None:
+        data["rewardScore"] = min(float(data["rewardScore"]), cap)
+    return data
 
 
 def _check_syntax(query: str) -> Optional[str]:
@@ -456,9 +524,9 @@ def analyze(req: AnalyzeReq):
     ai_data = None
     try:
         ai_data = _ai_analyze(req.query, req.dialect, req.context)
-    except Exception:
-        pass
-    rule_data = _rule_analyze(req.query)
+    except Exception as e:
+        print(f"[SQLens] AI analysis failed, using rule-based fallback: {type(e).__name__}: {e}", flush=True)
+    rule_data = _rule_analyze(req.query, req.context)
     if ai_data:
         data = ai_data
         opt = (data.get("optimizedQuery") or "").strip()
@@ -472,9 +540,11 @@ def analyze(req: AnalyzeReq):
             data["readabilityScore"] = rule_data["readabilityScore"]
     else:
         data = rule_data
+    data["engine"] = "ai" if ai_data else "rules"
+    data = _apply_score_caps(data)
     opt = (data.get("optimizedQuery") or "").strip()
     if data.get("rewardScore", 1.0) < 1.0 and (not opt or opt == req.query.strip()):
-        data["optimizedQuery"] = _build_optimized_query(req.query, data.get("issues", []))
+        data["optimizedQuery"] = _build_optimized_query(req.query, data.get("issues", []), req.context)
     data["optimizedQuery"] = _clean_sql_output(data.get("optimizedQuery") or "")
     data["optimizedQuery"] = re.sub(r'\d+["\']\s*>', '', data.get("optimizedQuery", ""))
     data["optimizedQuery"] = re.sub(r'\d{3,}>', '', data.get("optimizedQuery", ""))
