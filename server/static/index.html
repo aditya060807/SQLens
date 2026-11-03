@@ -467,7 +467,7 @@ textarea{font-family:var(--mono);resize:none;line-height:1.65;font-size:12.5px}
 <div class="pg" id="pg-about">
   <div class="about-wrap">
     <h1 style="text-align:center"><span class="grad">SQLens</span></h1>
-    <p style="text-align:center;font-size:17px;color:var(--muted);max-width:600px;margin:0 auto 40px">An AI-powered SQL analysis platform that scores every query 0&ndash;100, detects real issues, and delivers production-ready rewrites &mdash; instantly.</p>
+    <p style="text-align:center;font-size:17px;color:var(--muted);max-width:600px;margin:0 auto 40px">An AI-powered SQL analysis platform that scores every query from 0.00 to 1.00, detects real issues, and delivers production-ready rewrites &mdash; instantly.</p>
 
     <h2>What is SQLens?</h2>
     <p>SQLens is a real-world SQL quality analyzer. It gives every SQL query an honest quality score from 0 to 100 across three dimensions: Security, Performance, and Readability. Below 100 means there are specific, fixable problems &mdash; and SQLens shows you exactly what they are and how to fix them, with a corrected query that would score 100.</p>
@@ -699,23 +699,25 @@ function cleanSQL(sql){
   return sql.trim();
 }
 function hlSQL(sql){
-  // sql must already be clean plain text — do NOT pass HTML here
+  // sql must already be clean plain text. Single pass: every piece is escaped and coloured once,
+  // so one highlight can never end up inside another one's HTML attributes.
   if(!sql)return'';
-  // Escape HTML entities first so < > & in SQL don't break the markup
-  let s=sql.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  // Highlight keywords (word-boundary safe)
-  const kws=['SELECT','FROM','WHERE','JOIN','LEFT JOIN','RIGHT JOIN','INNER JOIN','CROSS JOIN','ON','AND','OR','NOT','IN','IS','NULL','AS','GROUP BY','ORDER BY','HAVING','LIMIT','OFFSET','WITH','UNION','ALL','DISTINCT','CASE','WHEN','THEN','ELSE','END','INSERT','UPDATE','DELETE','SET','VALUES','EXISTS','BETWEEN','LIKE','COUNT','SUM','AVG','MAX','MIN','ROUND','COALESCE','CAST','RANK','ROW_NUMBER','DENSE_RANK','PARTITION BY','OVER','ASC','DESC','TRUE','FALSE','BY','INTO','RETURNING'];
-  kws.forEach(k=>{
-    const re=new RegExp('(?<![\\w])('+k.replace(/ /g,'\\s+')+'(?![\\w]))','gi');
-    s=s.replace(re,'<span style="color:#60a5fa;font-weight:600">$1</span>');
-  });
-  // Strings (green)
-  s=s.replace(/('(?:[^'\\]|\\.)*')/g,'<span style="color:#86efac">$1</span>');
-  // Numbers (orange) — only standalone numbers, not inside words
-  s=s.replace(/(?<![a-zA-Z_\$])\b(\d+(?:\.\d+)?)\b(?![a-zA-Z_])/g,'<span style="color:#fdba74">$1</span>');
-  // Comments (dim)
-  s=s.replace(/(--[^\n]*)/g,'<span style="color:#3d5070;font-style:italic">$1</span>');
-  return s;
+  const esc2=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const KW=new Set(['SELECT','FROM','WHERE','JOIN','LEFT','RIGHT','INNER','OUTER','CROSS','ON','AND','OR','NOT','IN','IS','NULL','AS','GROUP','ORDER','BY','HAVING','LIMIT','OFFSET','WITH','UNION','ALL','DISTINCT','CASE','WHEN','THEN','ELSE','END','INSERT','UPDATE','DELETE','SET','VALUES','EXISTS','BETWEEN','LIKE','COUNT','SUM','AVG','MAX','MIN','ROUND','COALESCE','CAST','RANK','ROW_NUMBER','DENSE_RANK','PARTITION','OVER','ASC','DESC','TRUE','FALSE','INTO','RETURNING']);
+  const re=/(--[^\n]*)|('(?:[^'\\]|\\.)*')|(\$\d+)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z_0-9]*)/g;
+  let out='',last=0,m;
+  while((m=re.exec(sql))!==null){
+    out+=esc2(sql.slice(last,m.index));
+    const t=m[0];
+    if(m[1])out+='<span style="color:#3d5070;font-style:italic">'+esc2(t)+'</span>';
+    else if(m[2])out+='<span style="color:#86efac">'+esc2(t)+'</span>';
+    else if(m[3])out+='<span style="color:#fdba74">'+esc2(t)+'</span>';
+    else if(m[4])out+='<span style="color:#fdba74">'+esc2(t)+'</span>';
+    else if(KW.has(t.toUpperCase()))out+='<span style="color:#60a5fa;font-weight:600">'+esc2(t)+'</span>';
+    else out+=esc2(t);
+    last=m.index+t.length;
+  }
+  return out+esc2(sql.slice(last));
 }
 function scoreColor(s){return s>=0.7?'var(--green)':s>=0.4?'var(--yellow)':'var(--red)';}
 function fillCls(s){return s>=0.7?'fg':s>=0.4?'fy':'fr';}
@@ -765,10 +767,12 @@ function renderResult(d,origSql){
   }else{
     issHtml='<div class="no-issues">&#10003; No issues detected &#8212; this query is production-ready!</div>';
   }
-  const hasOpt=score<1.0&&cleanedOptQ&&cleanedOptQ.trim().length>5;
+  const optLabel=d.engine==='ai'?'AI Optimized Query':'Optimized Query (rule-based)';
+  const explLabel=d.engine==='ai'?'AI Explanation':'Explanation (rule-based)';
+  const hasOpt=issues.length>0&&cleanedOptQ&&cleanedOptQ.trim().length>5;
   const optHtml=hasOpt?
-    '<div class="opt-box"><div class="opt-hd"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">&#10024;</span><span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#a5b4fc">AI Optimized Query</span></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button id="opt-copy-btn" onclick="copyOpt()" class="copy-btn">&#128203; Copy</button><button id="opt-ins-btn" onclick="insertOpt()" style="padding:6px 16px;background:var(--grd);border:none;border-radius:7px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;font-family:var(--sans);display:flex;align-items:center;gap:6px;transition:opacity .15s" onmouseover="this.style.opacity=\'.85\'" onmouseout="this.style.opacity=\'1\'">&#8679; Insert into Editor</button></div></div><pre class="opt-pre">'+hlSQL(cleanedOptQ)+'</pre></div>':
-    (score===100?'<div class="no-issues" style="padding:16px 20px;border-radius:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">&#127942;</span><div><div style="font-weight:700;color:var(--green)">Score 100 &#8212; Perfect Query</div><div style="font-size:12px;color:var(--muted);margin-top:2px">No rewrite needed. Production-ready.</div></div></div>':'');
+    '<div class="opt-box"><div class="opt-hd"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:16px">&#10024;</span><span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#a5b4fc">'+optLabel+'</span></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button id="opt-copy-btn" onclick="copyOpt()" class="copy-btn">&#128203; Copy</button><button id="opt-ins-btn" onclick="insertOpt()" style="padding:6px 16px;background:var(--grd);border:none;border-radius:7px;font-size:12px;font-weight:700;color:#fff;cursor:pointer;font-family:var(--sans);display:flex;align-items:center;gap:6px;transition:opacity .15s" onmouseover="this.style.opacity=\'.85\'" onmouseout="this.style.opacity=\'1\'">&#8679; Insert into Editor</button></div></div><pre class="opt-pre">'+hlSQL(cleanedOptQ)+'</pre></div>':
+    (issues.length===0?'<div class="no-issues" style="padding:16px 20px;border-radius:12px;display:flex;align-items:center;gap:10px"><span style="font-size:20px">&#127942;</span><div><div style="font-weight:700;color:var(--green)">Perfect Query &#8212; no issues found</div><div style="font-size:12px;color:var(--muted);margin-top:2px">No rewrite needed. Production-ready.</div></div></div>':'');
   body.innerHTML=
     '<div class="score-row">'+
       '<div class="ring-wrap"><div class="ring"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="none" stroke="var(--border)" stroke-width="7"/><circle id="ring-arc" cx="50" cy="50" r="46" fill="none" stroke="'+c+'" stroke-width="7" stroke-dasharray="'+circ.toFixed(2)+'" stroke-dashoffset="'+circ.toFixed(2)+'" stroke-linecap="round" class="ring-circle"/></svg><span class="ring-num" id="ring-num" style="color:'+c+'">0</span></div><div class="ring-lbl">Quality Score</div></div>'+
@@ -780,7 +784,7 @@ function renderResult(d,origSql){
         '</div></div>'+
     '</div>'+
     issHtml+optHtml+
-    (expl?'<div class="exp-box"><h4>&#128161; AI Explanation</h4><p>'+esc(expl)+'</p></div>':'')+
+    (expl?'<div class="exp-box"><h4>&#128161; '+explLabel+'</h4><p>'+esc(expl)+'</p></div>':'')+
     (impact?'<div class="exp-box"><h4>&#127758; Real-World Impact</h4><p>'+esc(impact)+'</p></div>':'')+
     '<div class="fb-row"><div><h4>Was this analysis helpful?</h4><p>Your feedback improves the scoring model</p></div><div class="fb-btns"><button class="fb-btn" id="fb-yes" onclick="sendFB(\'helpful\')">&#128077; Helpful</button><button class="fb-btn" id="fb-no" onclick="sendFB(\'not_helpful\')">&#128078; Not helpful</button></div></div>';
   requestAnimationFrame(()=>{
